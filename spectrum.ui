@@ -1,0 +1,441 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Form</class>
+ <widget class="QWidget" name="Form">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>900</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Ocean Optics Spectrometer</string>
+  </property>
+  <layout class="QGridLayout" name="gridLayout">
+   <item row="0" column="0">
+    <layout class="QVBoxLayout" name="mainLayout">
+     <!-- Reflectance Mode Controls -->
+     <item>
+      <layout class="QHBoxLayout" name="reflectanceModeLayout">
+       <item>
+        <widget class="QCheckBox" name="reflectance_mode">
+         <property name="text">
+          <string>Reflectance Mode</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer_mode">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QLabel" name="connection_status">
+         <property name="text">
+          <string>Status: Disconnected</string>
+         </property>
+         <property name="styleSheet">
+          <string>QLabel { color: red; font-weight: bold; }</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </item>
+     
+     <!-- Reflectance Setup Panel -->
+     <item>
+      <widget class="QWidget" name="reflectance_setup">
+       <property name="visible">
+        <bool>false</bool>
+       </property>
+       <layout class="QVBoxLayout" name="reflectanceSetupLayout">
+        <item>
+         <widget class="QLabel" name="step_label">
+          <property name="text">
+           <string>Step 1: Adjust settings and click Next</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="reflectanceSettings">
+          <item>
+           <layout class="QVBoxLayout" name="reflIntegrationLayout">
+            <item>
+             <widget class="QLabel" name="label_refl_integration">
+              <property name="text">
+               <string>Integration (ms)</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="refl_integration">
+              <property name="minimum">
+               <number>1</number>
+              </property>
+              <property name="maximum">
+               <number>1000000</number>
+              </property>
+              <property name="value">
+               <number>100</number>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QVBoxLayout" name="reflAverageLayout">
+            <item>
+             <widget class="QLabel" name="label_refl_average">
+              <property name="text">
+               <string>Scans to Average</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="refl_average">
+              <property name="minimum">
+               <number>1</number>
+              </property>
+              <property name="maximum">
+               <number>1000</number>
+              </property>
+              <property name="value">
+               <number>5</number>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QVBoxLayout" name="boxcarLayout">
+            <item>
+             <widget class="QLabel" name="label_boxcar">
+              <property name="text">
+               <string>Boxcar Width</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="boxcar_width">
+              <property name="minimum">
+               <number>1</number>
+              </property>
+              <property name="maximum">
+               <number>50</number>
+              </property>
+              <property name="value">
+               <number>5</number>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="save_ref_bg">
+            <property name="text">
+             <string>Save Ref/BG</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="use_default_ref">
+            <property name="text">
+             <string>Use Default Ref</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="use_default_bg">
+            <property name="text">
+             <string>Use Default BG</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="save_as_default_ref">
+            <property name="text">
+             <string>Save as Default Ref</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="save_as_default_bg">
+            <property name="text">
+             <string>Save as Default BG</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="reflectanceButtons">
+          <item>
+           <widget class="QPushButton" name="next_step">
+            <property name="text">
+             <string>Next</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="store_spectrum">
+            <property name="text">
+             <string>Store</string>
+            </property>
+            <property name="visible">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="finish_reflectance">
+            <property name="text">
+             <string>Finish</string>
+            </property>
+            <property name="visible">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     
+     <!-- Tab Widget for Plots -->
+     <item>
+      <widget class="QTabWidget" name="tab_widget">
+       <property name="currentIndex">
+        <number>0</number>
+       </property>
+       <widget class="QWidget" name="intensity_tab">
+        <attribute name="title">
+         <string>Intensity</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="intensityLayout">
+         <item>
+          <layout class="QHBoxLayout" name="horizontalLayout">
+           <item>
+            <spacer name="horizontalSpacer">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <layout class="QVBoxLayout" name="saveLayout">
+             <item>
+              <layout class="QHBoxLayout" name="saveButtonsLayout">
+               <item>
+                <widget class="QPushButton" name="save_intensity_csv">
+                 <property name="text">
+                  <string>Save CSV</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="save_intensity_txt">
+                 <property name="text">
+                  <string>Save TXT</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QLineEdit" name="savepath"/>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QVBoxLayout" name="verticalLayout_3">
+             <item>
+              <widget class="QPushButton" name="autoXY">
+               <property name="text">
+                <string>Autoscale XY</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QVBoxLayout" name="boxcarLayout_intensity">
+             <item>
+              <widget class="QLabel" name="label_boxcar_intensity">
+               <property name="text">
+                <string>Boxcar Width</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QSpinBox" name="boxcar_width">
+               <property name="minimum">
+                <number>1</number>
+               </property>
+               <property name="maximum">
+                <number>50</number>
+               </property>
+               <property name="value">
+                <number>5</number>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QVBoxLayout" name="average_layout">
+             <item>
+              <widget class="QLabel" name="label_2">
+               <property name="text">
+                <string>Average</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QSpinBox" name="n_average">
+               <property name="minimum">
+                <number>1</number>
+               </property>
+               <property name="maximum">
+                <number>1000</number>
+               </property>
+               <property name="value">
+                <number>5</number>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QVBoxLayout" name="integration_layout">
+             <item>
+              <widget class="QLabel" name="label">
+               <property name="text">
+                <string>Integration (ms)</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QSpinBox" name="integration">
+               <property name="minimum">
+                <number>1</number>
+               </property>
+               <property name="maximum">
+                <number>1000000</number>
+               </property>
+               <property name="value">
+                <number>100</number>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+
+          </layout>
+         </item>
+         <item>
+          <widget class="PlotWidget" name="plot_full"/>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="reflectance_tab">
+        <attribute name="title">
+         <string>Reflectance</string>
+        </attribute>
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <layout class="QVBoxLayout" name="reflectanceLayout">
+         <item>
+          <layout class="QHBoxLayout" name="reflectanceControls">
+           <item>
+            <spacer name="horizontalSpacer_refl">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+            </spacer>
+           </item>
+           <item>
+            <widget class="QPushButton" name="autoXY_reflectance">
+             <property name="text">
+              <string>Autoscale XY</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="save_reflectance_csv">
+             <property name="text">
+              <string>Save CSV</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="save_reflectance_txt">
+             <property name="text">
+              <string>Save TXT</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <widget class="PlotWidget" name="plot_reflectance"/>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+     </item>
+     
+     <!-- Wavelength Range Controls -->
+     <item>
+      <layout class="QHBoxLayout" name="horizontalLayout_2">
+       <item>
+        <widget class="QDoubleSpinBox" name="xmin"/>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer_3">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QLabel" name="label_3">
+         <property name="text">
+          <string>Wavelength (nm)</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer_2">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QDoubleSpinBox" name="xmax"/>
+       </item>
+      </layout>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>PlotWidget</class>
+   <extends>QGraphicsView</extends>
+   <header>pyqtgraph</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

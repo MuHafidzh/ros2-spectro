@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float32MultiArray, Empty
-from sensor_msgs.msg import Joy
+from sensor_msgs.msg import Joy, NavSatFix
 
 import numpy as np
 import warnings
@@ -83,6 +83,12 @@ class SpectroNode(Node):
         self.last_button_time = {}
         self.button_debounce_time = 0.3  # 300ms debounce
 
+        self.current_gps = {
+            'latitude': 0.0,
+            'longitude': 0.0,
+            'altitude': 0.0
+        }
+
         # --- Spectrometer Initialization ---
         try:
             devices = list_devices()
@@ -148,6 +154,7 @@ class SpectroNode(Node):
         self.create_subscription(Empty, '~/capture_reference', self.capture_reference_cb, 10)
         self.create_subscription(Empty, '~/capture_background', self.capture_background_cb, 10)
         self.create_subscription(Joy, '/joy', self.joy_cb, 10)
+        self.create_subscription(NavSatFix, '/fix', self.gps_cb, 10)
 
         # --- Setup ---
         self.set_integration_time()
@@ -182,6 +189,13 @@ class SpectroNode(Node):
         event.accept()
         self.destroy_node()
         rclpy.shutdown()
+
+    def gps_cb(self, msg):
+        """Callback for GPS NavSatFix messages"""
+        self.current_gps['latitude'] = msg.latitude
+        self.current_gps['longitude'] = msg.longitude
+        self.current_gps['altitude'] = msg.altitude
+
 
     def setup_plots(self):
         """Setup pyqtgraph plots"""
@@ -727,6 +741,9 @@ class SpectroNode(Node):
         
         try:
             with open(filename, 'w') as txtfile:
+                txtfile.write(f'# GPS_LATITUDE: {self.current_gps["latitude"]:.6f}\n')
+                txtfile.write(f'# GPS_LONGITUDE: {self.current_gps["longitude"]:.6f}\n')
+                txtfile.write(f'# GPS_ALTITUDE: {self.current_gps["altitude"]:.2f}\n')
                 txtfile.write('Wavelength (nm)\tReflectance (%)\n')
                 for i in range(len(self.lmbd)):
                     txtfile.write(f'{self.lmbd[i]:.2f}\t{self.reflectance_data[i]:.4f}\n')

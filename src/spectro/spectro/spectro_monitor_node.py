@@ -34,12 +34,14 @@ class SpectroMonitorNode(Node):
             filename = data.get('filename', 'Unknown')
             average = data.get('average_derivative', 0.0)
             plot_filename = data.get('plot_filename', 'Unknown')
+            gps_data = data.get('gps_data', {})
             timestamp = data.get('timestamp', 'Unknown')
             
             self.get_logger().info(
                 f"PROCESSED: {filename} | "
                 f"Avg d²R/dλ²: {average:.6f} | "
                 f"Plot: {plot_filename} | "
+                f"GPS: {gps_data} | "
                 f"Time: {timestamp}"
             )
             

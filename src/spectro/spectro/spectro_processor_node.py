@@ -83,8 +83,31 @@ class SpectroProcessorNode(Node):
     
     def read_spectrum_file(self, filepath):
         """Read a single spectrum file - same as process.py read_spectrum_files but for single file"""
+        gps_data = {'latitude': 0.0, 'longitude': 0.0, 'altitude': 0.0}
         try:
             # Try different separators and handle various file formats
+            # First pass: read GPS data from header comments
+            with open(filepath, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('# GPS_LATITUDE:'):
+                        try:
+                            gps_data['latitude'] = float(line.split(':')[1].strip())
+                        except:
+                            pass
+                    elif line.startswith('# GPS_LONGITUDE:'):
+                        try:
+                            gps_data['longitude'] = float(line.split(':')[1].strip())
+                        except:
+                            pass
+                    elif line.startswith('# GPS_ALTITUDE:'):
+                        try:
+                            gps_data['altitude'] = float(line.split(':')[1].strip())
+                        except:
+                            pass
+                    elif not line.startswith('#'):
+                        # Stop when we hit data
+                        break
             # First try tab-separated
             try:
                 data = pd.read_csv(filepath, sep='\t', header=None)
@@ -95,6 +118,8 @@ class SpectroProcessorNode(Node):
                 except:
                     # Try space-separated (fix the regex warning)
                     data = pd.read_csv(filepath, sep=r'\s+', header=None)
+            
+
             
             # Assign column names
             if data.shape[1] >= 2:
@@ -288,16 +313,16 @@ class SpectroProcessorNode(Node):
             standard_interp = self.standard_data
         
         # Create plot
-        plot_filename = self.create_plot(wavelength, standard_interp, normalized, filename, average_value)
+        plot_filename = self.create_plot(wavelength, standard_interp, normalized, filename, average_value, gps_data)
         
         # Publish results
-        self.publish_results(filename, average_value, plot_filename)
+        self.publish_results(filename, average_value, plot_filename, gps_data)
         
         # Add to processed files
         self.processed_files.add(os.path.abspath(filepath))
         self.save_processed_files_list()
 
-    def create_plot(self, wavelength, standard_data, sample_data, filename, average_value):
+    def create_plot(self, wavelength, standard_data, sample_data, filename, average_value, gps_data):
         """Create and save plot - same as process.py plotting logic"""
         plt.figure(figsize=(12, 8))
         
@@ -315,10 +340,19 @@ class SpectroProcessorNode(Node):
         plt.grid(True, alpha=0.3)
         plt.xlim(400, 700)
         
-        # Add timestamp
+        # Add timestamp and GPS info in text box
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        plt.text(0.02, 0.98, f'Processed: {timestamp}', transform=plt.gca().transAxes, 
-                verticalalignment='top', fontsize=8, alpha=0.7)
+        info_text = f'Processed: {timestamp}\n'
+        
+        if gps_data['latitude'] != 0.0 or gps_data['longitude'] != 0.0:
+            info_text += f'GPS: {gps_data["latitude"]:.6f}°, {gps_data["longitude"]:.6f}°\n'
+            info_text += f'Alt: {gps_data["altitude"]:.2f}m'
+        else:
+            info_text += 'GPS: No data available'
+        
+        plt.text(0.02, 0.98, info_text, transform=plt.gca().transAxes, 
+                verticalalignment='top', fontsize=9, alpha=0.8,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.7))
         
         # Save plot
         plot_filename = f"{os.path.splitext(filename)[0]}_processed.jpg"
@@ -330,13 +364,14 @@ class SpectroProcessorNode(Node):
         self.get_logger().info(f"Plot saved: {plot_filename}")
         return plot_filename
 
-    def publish_results(self, filename, average_value, plot_filename):
+    def publish_results(self, filename, average_value, plot_filename, gps_data):
         """Publish processing results"""
         # Publish filename and average as JSON string
         result_data = {
             'filename': filename,
             'average_derivative': float(average_value),
             'plot_filename': plot_filename,
+            'gps_data': gps_data,
             'timestamp': datetime.now().isoformat()
         }
         

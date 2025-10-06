@@ -11,8 +11,8 @@ def generate_launch_description():
             output='screen',
             parameters=[
                 {'integration_time_ms': 500},
-                {'scans_to_average': 5},
-                {'boxcar_width': 1},
+                {'scans_to_average': 10},
+                {'boxcar_width': 5},
                 {'save_path': '~/spectro_data'},
                 {'joystick_intensity_button': 0},
                 {'joystick_reflectance_button': 2},

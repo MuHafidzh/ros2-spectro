@@ -79,52 +79,79 @@ class SpectroProcessorNode(Node):
         except Exception as e:
             self.get_logger().warn(f"Error saving processed files list: {e}")
 
-    # ===== EXACT SAME FUNCTIONS AS process.py =====
-    
     def read_spectrum_file(self, filepath):
-        """Read a single spectrum file - same as process.py read_spectrum_files but for single file"""
+        """Read a single spectrum file with GPS data from header comments"""
         gps_data = {'latitude': 0.0, 'longitude': 0.0, 'altitude': 0.0}
         try:
-            # Try different separators and handle various file formats
             # First pass: read GPS data from header comments
             with open(filepath, 'r') as f:
                 for line in f:
                     line = line.strip()
                     if line.startswith('# GPS_LATITUDE:'):
                         try:
-                            gps_data['latitude'] = float(line.split(':')[1].strip())
+                            val = line.split(':')[1].strip()
+                            if val != 'nan':
+                                gps_data['latitude'] = float(val)
                         except:
                             pass
                     elif line.startswith('# GPS_LONGITUDE:'):
                         try:
-                            gps_data['longitude'] = float(line.split(':')[1].strip())
+                            val = line.split(':')[1].strip()
+                            if val != 'nan':
+                                gps_data['longitude'] = float(val)
                         except:
                             pass
                     elif line.startswith('# GPS_ALTITUDE:'):
                         try:
-                            gps_data['altitude'] = float(line.split(':')[1].strip())
+                            val = line.split(':')[1].strip()
+                            if val != 'nan':
+                                gps_data['altitude'] = float(val)
                         except:
                             pass
                     elif not line.startswith('#'):
                         # Stop when we hit data
                         break
-            # First try tab-separated
+            
+            # Second pass: read spectrum data, skip comments AND header row
             try:
-                data = pd.read_csv(filepath, sep='\t', header=None)
-            except:
-                # Try comma-separated
-                try:
-                    data = pd.read_csv(filepath, sep=',', header=None)
-                except:
-                    # Try space-separated (fix the regex warning)
-                    data = pd.read_csv(filepath, sep=r'\s+', header=None)
-            
-
-            
-            # Assign column names
-            if data.shape[1] >= 2:
-                data.columns = ['wavelength', 'reflectance'] + [f'col_{i}' for i in range(2, data.shape[1])]
+                # Read with comment='#' to skip GPS headers
+                data = pd.read_csv(filepath, sep='\t', comment='#')
                 
+                # Check if first row is header (contains text like "Wavelength")
+                if len(data.columns) >= 2 and any('wavelength' in str(col).lower() for col in data.columns):
+                    # Pandas already used first row as column names, data is ready
+                    data.columns = ['wavelength', 'reflectance'] + [f'col_{i}' for i in range(2, len(data.columns))]
+                else:
+                    # First row might still be header, check if it contains text
+                    if data.shape[0] > 0:
+                        first_row = data.iloc[0]
+                        if any(isinstance(val, str) and ('wavelength' in str(val).lower() or 'reflectance' in str(val).lower()) for val in first_row):
+                            # Skip the header row
+                            data = data.iloc[1:].reset_index(drop=True)
+                    
+                    # Assign column names
+                    data.columns = ['wavelength', 'reflectance'] + [f'col_{i}' for i in range(2, len(data.columns))]
+                    
+            except:
+                try:
+                    # Try comma-separated
+                    data = pd.read_csv(filepath, sep=',', comment='#')
+                    if data.shape[0] > 0:
+                        first_row = data.iloc[0]
+                        if any(isinstance(val, str) and ('wavelength' in str(val).lower() or 'reflectance' in str(val).lower()) for val in first_row):
+                            data = data.iloc[1:].reset_index(drop=True)
+                    data.columns = ['wavelength', 'reflectance'] + [f'col_{i}' for i in range(2, len(data.columns))]
+                except:
+                    # Try space-separated
+                    data = pd.read_csv(filepath, sep=r'\s+', comment='#')
+                    if data.shape[0] > 0:
+                        first_row = data.iloc[0]
+                        if any(isinstance(val, str) and ('wavelength' in str(val).lower() or 'reflectance' in str(val).lower()) for val in first_row):
+                            data = data.iloc[1:].reset_index(drop=True)
+                    data.columns = ['wavelength', 'reflectance'] + [f'col_{i}' for i in range(2, len(data.columns))]
+            
+            # Check if we have enough columns
+            if data.shape[1] >= 2:
                 # Convert wavelength and reflectance to numeric, handling any non-numeric values
                 data['wavelength'] = pd.to_numeric(data['wavelength'], errors='coerce')
                 data['reflectance'] = pd.to_numeric(data['reflectance'], errors='coerce')
@@ -135,14 +162,14 @@ class SpectroProcessorNode(Node):
                 # Keep only wavelength and reflectance columns
                 data = data[['wavelength', 'reflectance']]
                 
-                return data['wavelength'].values, data['reflectance'].values
+                return data['wavelength'].values, data['reflectance'].values, gps_data
             else:
                 self.get_logger().error(f"File {filepath} doesn't have enough columns")
-                return None, None
+                return None, None, gps_data
                 
         except Exception as e:
             self.get_logger().error(f"Error reading {filepath}: {e}")
-            return None, None
+            return None, None, gps_data
 
     def filter_wavelength_range(self, data, min_wl=400, max_wl=700):
         """Filter data to keep only wavelengths between min_wl and max_wl - same as process.py"""
@@ -217,8 +244,6 @@ class SpectroProcessorNode(Node):
             return np.zeros_like(data)
         return (data - min_val) / (max_val - min_val)
 
-    # ===== PROCESSING FUNCTIONS SAME AS process.py =====
-    
     def load_and_process_standard(self):
         """Load and process standard reference data - same as process.py process_standard_data logic"""
         if not os.path.exists(self.reference_file):
@@ -227,8 +252,13 @@ class SpectroProcessorNode(Node):
         
         self.get_logger().info(f"Processing standard reference: {self.reference_file}")
         
-        # Read reference file
-        wavelength, reflectance = self.read_spectrum_file(self.reference_file)
+        # Read reference file (returns GPS data too, but we ignore it for standard)
+        result = self.read_spectrum_file(self.reference_file)
+        if len(result) == 3:
+            wavelength, reflectance, _ = result
+        else:
+            wavelength, reflectance = result
+            
         if wavelength is None:
             self.get_logger().error("Failed to read reference file")
             return
@@ -268,11 +298,15 @@ class SpectroProcessorNode(Node):
         filename = os.path.basename(filepath)
         self.get_logger().info(f"Processing sample file: {filename}")
         
-        # Read sample data
-        wavelength, reflectance = self.read_spectrum_file(filepath)
+        # Read sample data WITH GPS data
+        wavelength, reflectance, gps_data = self.read_spectrum_file(filepath)
         if wavelength is None:
             self.get_logger().error(f"Failed to read sample file: {filename}")
             return
+        
+        # Log GPS data if available
+        if gps_data['latitude'] != 0.0 or gps_data['longitude'] != 0.0:
+            self.get_logger().info(f"GPS data found: Lat={gps_data['latitude']:.6f}, Lon={gps_data['longitude']:.6f}, Alt={gps_data['altitude']:.2f}m")
         
         # Create dataframe for filtering
         data = pd.DataFrame({'wavelength': wavelength, 'reflectance': reflectance})
@@ -304,7 +338,8 @@ class SpectroProcessorNode(Node):
         normalized = self.normalize_data(second_deriv)
         
         # Calculate average value
-        average_value = np.mean(normalized)
+        # average_value = np.mean(normalized)
+        average_value = np.median(normalized)
         
         # Interpolate standard data to match sample wavelength if needed
         if len(self.standard_wavelength) != len(wavelength) or not np.allclose(self.standard_wavelength, wavelength):
@@ -462,6 +497,7 @@ def main(args=None):
             rclpy.shutdown()
         except:
             pass
+
 
 if __name__ == '__main__':
     main()

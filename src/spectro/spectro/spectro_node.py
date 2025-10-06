@@ -61,8 +61,8 @@ class SpectroNode(Node):
 
         # --- ROS2 Parameters ---
         self.declare_parameter('integration_time_ms', 500)  # Changed to 500ms default
-        self.declare_parameter('scans_to_average', 5)
-        self.declare_parameter('boxcar_width', 1)
+        self.declare_parameter('scans_to_average', 10)
+        self.declare_parameter('boxcar_width', 5)
         self.declare_parameter('save_path', '~/spectro_data')
         self.declare_parameter('joystick_intensity_button', 2)  # X button for intensity save
         self.declare_parameter('joystick_reflectance_button', 3)  # Triangle button for reflectance save

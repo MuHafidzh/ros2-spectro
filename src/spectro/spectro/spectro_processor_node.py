@@ -2,7 +2,8 @@
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String, Float32
+from std_msgs.msg import String, Float32, Bool
+from std_srvs.srv import SetBool
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -24,10 +25,12 @@ class SpectroProcessorNode(Node):
         self.declare_parameter('reflectance_folder', '/home/tank/spectro_data/reflectance')
         self.declare_parameter('reference_file', '/home/tank/ros2_spectra_ws/standard.txt')
         self.declare_parameter('process_folder_name', 'process')
+        self.declare_parameter('use_absorbance_as_primary', True)  # New flag
         
         self.reflectance_folder = self.get_parameter('reflectance_folder').value
         self.reference_file = self.get_parameter('reference_file').value
         self.process_folder_name = self.get_parameter('process_folder_name').value
+        self.use_absorbance_as_primary = self.get_parameter('use_absorbance_as_primary').value
         
         # Create process folder
         self.process_folder = os.path.join(self.reflectance_folder, self.process_folder_name)
@@ -35,7 +38,14 @@ class SpectroProcessorNode(Node):
         
         # Publishers
         self.result_pub = self.create_publisher(String, '~/processing_result', 10)
-        self.average_pub = self.create_publisher(Float32, '~/average_derivative', 10)
+        self.median_pub = self.create_publisher(Float32, '~/median_derivative', 10)  # Changed name
+        
+        # Service to change primary result type
+        self.primary_type_service = self.create_service(
+            SetBool, 
+            '~/set_absorbance_primary', 
+            self.set_primary_type_callback
+        )
         
         # Standard data (reference processing)
         self.standard_wavelength = None
@@ -55,6 +65,27 @@ class SpectroProcessorNode(Node):
         self.get_logger().info(f"Spectro Processor Node started")
         self.get_logger().info(f"Monitoring folder: {self.reflectance_folder}")
         self.get_logger().info(f"Process folder: {self.process_folder}")
+        self.get_logger().info(f"Primary result: {'Absorbance' if self.use_absorbance_as_primary else 'Reflectance'}")
+
+    def set_primary_result_type(self, use_absorbance=True):
+        """Change the primary result type dynamically"""
+        self.use_absorbance_as_primary = use_absorbance
+        result_type = 'Absorbance' if use_absorbance else 'Reflectance'
+        self.get_logger().info(f"Primary result changed to: {result_type}")
+
+    def set_primary_type_callback(self, request, response):
+        """Service callback to set whether to use absorbance as primary"""
+        # Simply update the variable directly
+        self.use_absorbance_as_primary = request.data
+        
+        response.success = True
+        response.message = f"Primary result type set to {'absorbance' if request.data else 'reflectance'}"
+        
+        # Log the change
+        result_type = 'absorbance' if request.data else 'reflectance'
+        self.get_logger().info(f"Primary result type changed to: {result_type}")
+        
+        return response
 
     def load_processed_files_list(self):
         """Load list of already processed files"""
@@ -290,7 +321,7 @@ class SpectroProcessorNode(Node):
         self.get_logger().info(f"Standard reference processed: {len(self.standard_data)} points")
 
     def process_sample_file(self, filepath):
-        """Process a single sample file - same as process.py process_sample_data logic"""
+        """Process a single sample file with dual processing paths"""
         if self.standard_data is None:
             self.get_logger().error("Standard data not available for processing")
             return
@@ -321,25 +352,48 @@ class SpectroProcessorNode(Node):
         wavelength = filtered_data['wavelength'].values
         reflectance = filtered_data['reflectance'].values
         
-        # SAME AS process.py process_sample_data:
-        # Baseline correction (subtract minimum)
-        corrected = self.baseline_correction_sample(reflectance)
+        # === DUAL PROCESSING PATHS ===
         
-        # First smoothing
-        smoothed = self.smooth_data(corrected)
+        # PATH 1: Reflectance → Derivatives → Normalize → Median
+        # Apply baseline correction and smoothing to reflectance
+        corrected_refl = self.baseline_correction_sample(reflectance)
+        smoothed_refl = self.smooth_data(corrected_refl)
         
-        # First derivative with smoothing
-        first_deriv = self.calculate_derivative(smoothed, order=1)
+        # Calculate derivatives on reflectance
+        first_deriv_refl = self.calculate_derivative(smoothed_refl, order=1)
+        second_deriv_refl = self.calculate_derivative(first_deriv_refl, order=1)
+        third_deriv_refl = self.calculate_derivative(second_deriv_refl, order=1)
+        fourth_deriv_refl = self.calculate_derivative(third_deriv_refl, order=1)
         
-        # Second derivative with smoothing
-        second_deriv = self.calculate_derivative(first_deriv, order=1)
+        # Normalize 4th derivative of reflectance
+        normalized_refl = self.normalize_data(fourth_deriv_refl)
+        median_refl = np.median(normalized_refl)
         
-        # Normalize to [0, 1]
-        normalized = self.normalize_data(second_deriv)
+        # PATH 2: Absorbance Processing
+        # Convert reflectance to absorbance: log10(1/(0.01*reflectance))
+        epsilon = 1e-10
+        absorbance = np.log10(1 / (0.01 * np.maximum(reflectance, epsilon)))
         
-        # Calculate average value
-        # average_value = np.mean(normalized)
-        average_value = np.median(normalized)
+        # Apply baseline correction and smoothing to absorbance
+        corrected_abs = self.baseline_correction_sample(absorbance)
+        smoothed_abs = self.smooth_data(corrected_abs)
+        
+        # Calculate derivatives on absorbance
+        first_deriv_abs = self.calculate_derivative(smoothed_abs, order=1)
+        second_deriv_abs = self.calculate_derivative(first_deriv_abs, order=1)
+        third_deriv_abs = self.calculate_derivative(second_deriv_abs, order=1)
+        fourth_deriv_abs = self.calculate_derivative(third_deriv_abs, order=1)
+        # Normalize 4th derivative of absorbance
+        normalized_abs = self.normalize_data(fourth_deriv_abs)
+        median_abs = np.median(normalized_abs)
+        
+        # Use selected path as primary result based on flag
+        if self.use_absorbance_as_primary:
+            primary_result = normalized_abs
+            primary_median = median_abs
+        else:
+            primary_result = normalized_refl
+            primary_median = median_refl
         
         # Interpolate standard data to match sample wavelength if needed
         if len(self.standard_wavelength) != len(wavelength) or not np.allclose(self.standard_wavelength, wavelength):
@@ -347,35 +401,58 @@ class SpectroProcessorNode(Node):
         else:
             standard_interp = self.standard_data
         
-        # Create plot
-        plot_filename = self.create_plot(wavelength, standard_interp, normalized, filename, average_value, gps_data)
+        # Create plot with both processing paths
+        plot_filename = self.create_dual_plot(wavelength, standard_interp, 
+                                            normalized_refl, normalized_abs,
+                                            filename, median_refl, median_abs, gps_data)
         
-        # Publish results
-        self.publish_results(filename, average_value, plot_filename, gps_data)
+        # Publish results (using selected path as primary)
+        self.publish_dual_results(filename, median_refl, median_abs, primary_median, plot_filename, gps_data)
         
         # Add to processed files
         self.processed_files.add(os.path.abspath(filepath))
         self.save_processed_files_list()
 
-    def create_plot(self, wavelength, standard_data, sample_data, filename, average_value, gps_data):
-        """Create and save plot - same as process.py plotting logic"""
-        plt.figure(figsize=(12, 8))
+    def create_dual_plot(self, wavelength, standard_data, refl_normalized, abs_normalized, 
+                        filename, median_refl, median_abs, gps_data):
+        """Create and save dual processing plot"""
+        plt.figure(figsize=(15, 10))
+        
+        # Create subplot layout
+        plt.subplot(2, 1, 1)
         
         # Plot standard data
         plt.plot(wavelength, standard_data, 'k-', linewidth=2, label='Standard (smoothed/100)')
         
-        # Plot sample data
-        plt.plot(wavelength, sample_data, 'r-', linewidth=1.5, 
-                label=f'{filename} (normalized d²R/dλ²)\nAverage: {average_value:.6f}')
+        # Plot reflectance processing path
+        plt.plot(wavelength, refl_normalized, 'r-', linewidth=1.5, 
+                label=f'Path 1: Refl→4th deriv→norm (Median: {median_refl:.6f})')
         
         plt.xlabel('Wavelength (nm)')
-        plt.ylabel('Processed Reflectance')
-        plt.title(f'Spectral Analysis: {filename}')
+        plt.ylabel('Processed Data')
+        plt.title(f'Path 1 - Reflectance Processing: {filename}')
         plt.legend()
         plt.grid(True, alpha=0.3)
         plt.xlim(400, 700)
         
-        # Add timestamp and GPS info in text box
+        # Second subplot for absorbance processing
+        plt.subplot(2, 1, 2)
+        
+        # Plot standard data
+        plt.plot(wavelength, standard_data, 'k-', linewidth=2, label='Standard (smoothed/100)')
+        
+        # Plot absorbance processing path
+        plt.plot(wavelength, abs_normalized, 'b-', linewidth=1.5, 
+                label=f'Path 2: Abs→4th deriv→norm (Median: {median_abs:.6f})')
+        
+        plt.xlabel('Wavelength (nm)')
+        plt.ylabel('Processed Data')
+        plt.title(f'Path 2 - Absorbance Processing: {filename}')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.xlim(400, 700)
+        
+        # Add timestamp and GPS info
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         info_text = f'Processed: {timestamp}\n'
         
@@ -385,41 +462,49 @@ class SpectroProcessorNode(Node):
         else:
             info_text += 'GPS: No data available'
         
-        plt.text(0.02, 0.98, info_text, transform=plt.gca().transAxes, 
-                verticalalignment='top', fontsize=9, alpha=0.8,
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.7))
+        plt.figtext(0.02, 0.02, info_text, fontsize=9, alpha=0.8,
+                   bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.7))
         
-        # Save plot
-        plot_filename = f"{os.path.splitext(filename)[0]}_processed.jpg"
-        plot_path = os.path.join(self.process_folder, plot_filename)
+        # Save plot in processing folder outside reflectance directory
+        plot_filename = f"{os.path.splitext(filename)[0]}_dual_processed.jpg"
+        # Create processing folder at same level as reflectance folder
+        processing_folder = os.path.join(os.path.dirname(self.reflectance_folder), "processing")
+        os.makedirs(processing_folder, exist_ok=True)
+        plot_path = os.path.join(processing_folder, plot_filename)
         
+        plt.tight_layout()
         plt.savefig(plot_path, dpi=300, bbox_inches='tight')
         plt.close()
         
-        self.get_logger().info(f"Plot saved: {plot_filename}")
+        self.get_logger().info(f"Dual processing plot saved: {plot_filename}")
         return plot_filename
 
-    def publish_results(self, filename, average_value, plot_filename, gps_data):
-        """Publish processing results"""
-        # Publish filename and average as JSON string
+    def publish_dual_results(self, filename, median_refl, median_abs, primary_median, plot_filename, gps_data):
+        """Publish dual processing results"""
+        # Publish both processing results as JSON string
         result_data = {
             'filename': filename,
-            'average_derivative': float(average_value),
+            'reflectance_median': float(median_refl),
+            'absorbance_median': float(median_abs),
+            'primary_result': float(primary_median),  # Based on flag
+            'primary_type': 'absorbance' if self.use_absorbance_as_primary else 'reflectance',
             'plot_filename': plot_filename,
             'gps_data': gps_data,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'processing_type': 'dual_path'
         }
         
         result_msg = String()
         result_msg.data = json.dumps(result_data)
         self.result_pub.publish(result_msg)
         
-        # Publish average value separately
-        avg_msg = Float32()
-        avg_msg.data = float(average_value)
-        self.average_pub.publish(avg_msg)
+        # Publish primary result based on flag
+        median_msg = Float32()
+        median_msg.data = float(primary_median)
+        self.median_pub.publish(median_msg)
         
-        self.get_logger().info(f"Published results for {filename}: avg={average_value:.6f}")
+        primary_type = 'absorbance' if self.use_absorbance_as_primary else 'reflectance'
+        self.get_logger().info(f"Published dual results for {filename}: refl_median={median_refl:.6f}, abs_median={median_abs:.6f}, primary({primary_type})={primary_median:.6f}")
 
     def process_existing_files(self):
         """Process any existing files that haven't been processed yet"""
